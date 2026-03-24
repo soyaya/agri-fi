@@ -128,4 +128,22 @@ export class ShipmentsService {
       return savedMilestone;
     });
   }
+
+  async findByDeal(tradeDealId: string): Promise<ShipmentMilestone[]> {
+    // First verify the trade deal exists
+    const dealExists = await this.milestoneRepo.manager.query(
+      `SELECT id FROM trade_deals WHERE id = $1`,
+      [tradeDealId],
+    );
+
+    if (!dealExists.length) {
+      throw new NotFoundException('Trade deal not found');
+    }
+
+    // Return milestones ordered by recorded_at ASC
+    return this.milestoneRepo.find({
+      where: { tradeDealId },
+      order: { recordedAt: 'ASC' },
+    });
+  }
 }

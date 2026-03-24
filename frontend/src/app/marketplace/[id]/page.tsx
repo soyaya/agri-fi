@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { getDealById } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
 import StatusBadge from '@/components/StatusBadge';
+import { ShipmentTimeline } from '@/components/ShipmentTimeline';
 
 export const revalidate = 60;
 
@@ -75,21 +76,7 @@ export default async function DealDetailPage({ params }: { params: { id: string 
 
         {/* Milestones */}
         <section className="bg-white rounded-2xl shadow-sm border border-green-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Shipment Milestones</h2>
-          {milestones.length === 0 ? (
-            <p className="text-sm text-gray-400">No milestones recorded yet.</p>
-          ) : (
-            <ol className="relative border-l border-green-200 space-y-6 ml-3">
-              {milestones.map((m) => (
-                <li key={m.id} className="ml-4">
-                  <span className="absolute -left-1.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
-                  <p className="text-sm font-semibold text-gray-700 capitalize">{m.milestone}</p>
-                  {m.notes && <p className="text-sm text-gray-500">{m.notes}</p>}
-                  <p className="text-xs text-gray-400">{new Date(m.recorded_at).toLocaleString()}</p>
-                </li>
-              ))}
-            </ol>
-          )}
+          <ShipmentTimeline tradeDealId={deal.id} />
         </section>
 
       </div>

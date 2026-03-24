@@ -5,12 +5,13 @@ import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Document } from './entities/document.entity';
 import { Investment } from '../users/entities/investment.entity';
+import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TradeDeal, Document, Investment]),
+    TypeOrmModule.forFeature([TradeDeal, Document, Investment, ShipmentMilestone]),
     StellarModule,
     QueueModule,
   ],

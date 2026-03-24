@@ -1,6 +1,8 @@
 import {
   Controller,
+  Get,
   Post,
+  Param,
   Body,
   UseGuards,
   Request,
@@ -20,6 +22,12 @@ interface AuthRequest extends Request {
 @Controller('shipments')
 export class ShipmentsController {
   constructor(private readonly shipmentsService: ShipmentsService) {}
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get(':trade_deal_id')
+  async getMilestonesByDeal(@Param('trade_deal_id') tradeDealId: string) {
+    return this.shipmentsService.findByDeal(tradeDealId);
+  }
 
   @UseGuards(AuthGuard('jwt'))
   @Post('milestones')

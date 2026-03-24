@@ -191,4 +191,74 @@ describe('ShipmentsService', () => {
       expect(mockQueueService.enqueueDealDelivered).not.toHaveBeenCalled();
     });
   });
+
+  describe('findByDeal', () => {
+    it('should return milestones for existing deal ordered by recorded_at ASC', async () => {
+      const tradeDealId = 'deal-123';
+      const mockMilestones = [
+        {
+          id: 'milestone-1',
+          tradeDealId,
+          milestone: 'farm',
+          notes: 'Collected from farm',
+          stellarTxId: 'stellar-tx-1',
+          recordedBy: 'trader-123',
+          recordedAt: new Date('2024-01-01'),
+        },
+        {
+          id: 'milestone-2',
+          tradeDealId,
+          milestone: 'warehouse',
+          notes: 'Stored in warehouse',
+          stellarTxId: 'stellar-tx-2',
+          recordedBy: 'trader-123',
+          recordedAt: new Date('2024-01-02'),
+        },
+      ];
+
+      // Mock deal exists check
+      const mockManager = {
+        query: jest.fn().mockResolvedValue([{ id: tradeDealId }]),
+      };
+      mockMilestoneRepo.manager = mockManager;
+      mockMilestoneRepo.find.mockResolvedValue(mockMilestones);
+
+      const result = await service.findByDeal(tradeDealId);
+
+      expect(result).toEqual(mockMilestones);
+      expect(mockMilestoneRepo.find).toHaveBeenCalledWith({
+        where: { tradeDealId },
+        order: { recordedAt: 'ASC' },
+      });
+    });
+
+    it('should return empty array for existing deal with no milestones', async () => {
+      const tradeDealId = 'deal-123';
+
+      // Mock deal exists check
+      const mockManager = {
+        query: jest.fn().mockResolvedValue([{ id: tradeDealId }]),
+      };
+      mockMilestoneRepo.manager = mockManager;
+      mockMilestoneRepo.find.mockResolvedValue([]);
+
+      const result = await service.findByDeal(tradeDealId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should throw NotFoundException for non-existent deal', async () => {
+      const tradeDealId = 'non-existent-deal';
+
+      // Mock deal does not exist
+      const mockManager = {
+        query: jest.fn().mockResolvedValue([]),
+      };
+      mockMilestoneRepo.manager = mockManager;
+
+      await expect(service.findByDeal(tradeDealId)).rejects.toThrow(
+        'Trade deal not found',
+      );
+    });
+  });
 });

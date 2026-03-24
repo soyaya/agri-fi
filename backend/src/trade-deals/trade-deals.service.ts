@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TradeDeal, DealStatus } from './entities/trade-deal.entity';
 import { Document } from './entities/document.entity';
+import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 
@@ -18,6 +19,8 @@ export class TradeDealsService {
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
     private readonly documentRepo: Repository<Document>,
+    @InjectRepository(ShipmentMilestone)
+    private readonly milestoneRepo: Repository<ShipmentMilestone>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
   ) {}
@@ -87,6 +90,12 @@ export class TradeDealsService {
       throw new NotFoundException('Trade deal not found');
     }
 
+    // Load milestones for this deal
+    const milestones = await this.milestoneRepo.find({
+      where: { tradeDealId: id },
+      order: { recordedAt: 'ASC' },
+    });
+
     // Calculate tokens remaining
     const confirmedInvestments = deal.investments?.filter(inv => inv.status === 'confirmed') || [];
     const tokensSold = confirmedInvestments.reduce((sum, inv) => sum + inv.tokenAmount, 0);
@@ -104,6 +113,14 @@ export class TradeDealsService {
       tokensRemaining,
       traderName: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(deal.deliveryDate).toLocaleDateString()}`,
+      milestones: milestones.map(milestone => ({
+        id: milestone.id,
+        milestone: milestone.milestone,
+        notes: milestone.notes,
+        stellarTxId: milestone.stellarTxId,
+        recordedBy: milestone.recordedBy,
+        recordedAt: milestone.recordedAt,
+      })),
     };
   }
 
