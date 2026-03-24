@@ -9,6 +9,7 @@ import { TradeDealsModule } from "./trade-deals/trade-deals.module";
 import { UsersModule } from "./users/users.module";
 import { InvestmentsModule } from "./investments/investments.module";
 import { EscrowModule } from "./escrow/escrow.module";
+import { StorageModule } from "./storage/storage.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { EscrowModule } from "./escrow/escrow.module";
     UsersModule,
     InvestmentsModule,
     EscrowModule,
+    StorageModule,
   ],
 })
 export class AppModule {}
