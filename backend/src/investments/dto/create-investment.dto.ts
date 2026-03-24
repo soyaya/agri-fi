@@ -1,19 +1,25 @@
-import { IsUUID, IsNumber, IsPositive, IsNotEmpty,  IsInt, Min } from 'class-validator';
+import {
+  IsUUID,
+  IsNumber,
+  IsPositive,
+  IsNotEmpty,
+  IsInt,
+  Min,
+} from "class-validator";
+import { Type } from "class-transformer";
 
 export class CreateInvestmentDto {
   @IsUUID()
   @IsNotEmpty()
   tradeDealId: string;
 
-  @IsNumber()
-  @IsPositive()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   tokenAmount: number;
 
+  @Type(() => Number)
   @IsNumber()
   @IsPositive()
   amountUsd: number;
-
-  @IsInt()
-  @Min(1)
-  token_amount: number;
 }

@@ -1,16 +1,15 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { TradeDeal, DealStatus } from './entities/trade-deal.entity';
-import { Document } from './entities/document.entity';
-import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
-import { StellarService } from '../stellar/stellar.service';
-import { QueueService } from '../queue/queue.service';
+  BadRequestException,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { TradeDeal, TradeDealStatus } from "./entities/trade-deal.entity";
+import { Document } from "./entities/document.entity";
+import { ShipmentMilestone } from "../shipments/entities/shipment-milestone.entity";
+import { CreateTradeDealDto } from "./dto/create-trade-deal.dto";
+import { User } from "../auth/entities/user.entity";
 
 @Injectable()
 export class TradeDealsService {
@@ -21,85 +20,100 @@ export class TradeDealsService {
     private readonly documentRepo: Repository<Document>,
     @InjectRepository(ShipmentMilestone)
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
-    private readonly stellarService: StellarService,
-    private readonly queueService: QueueService,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
-  async publishDeal(dealId: string, userId: string): Promise<TradeDeal> {
-    // Find the deal with relations
-    const deal = await this.tradeDealRepo.findOne({
-      where: { id: dealId },
-      relations: ['documents'],
+  async updateDealStatus(
+    dealId: string,
+    status: TradeDealStatus,
+    stellarAssetTxId?: string,
+  ): Promise<void> {
+    await this.tradeDealRepo.update(dealId, {
+      status,
+      ...(stellarAssetTxId && { stellarAssetTxId }),
+    });
+  }
+
+  async createDeal(
+    traderId: string,
+    dto: CreateTradeDealDto,
+  ): Promise<TradeDeal> {
+    const farmer = await this.userRepo.findOne({
+      where: { id: dto.farmer_id },
     });
 
-    if (!deal) {
-      throw new NotFoundException('Trade deal not found');
+    if (!farmer) {
+      throw new NotFoundException("Farmer not found.");
     }
 
-    // Only the trader who owns the deal can publish it
-    if (deal.traderId !== userId) {
-      throw new ForbiddenException({
-        code: 'NOT_DEAL_OWNER',
-        message: 'Only the trader who owns the deal can publish it',
+    if (farmer.role !== "farmer") {
+      throw new BadRequestException({
+        code: "INVALID_FARMER",
+        message: 'farmer_id must belong to a user with role "farmer".',
       });
     }
 
-    // Deal must currently have status = 'draft'
-    if (deal.status !== 'draft') {
-      throw new UnprocessableEntityException({
-        code: 'INVALID_STATUS',
-        message: 'Deal must have status "draft" to be published',
+    const tokenCount = Math.floor(Number(dto.total_value) / 100);
+
+    if (tokenCount < 1) {
+      throw new BadRequestException({
+        code: "INVALID_TOKEN_COUNT",
+        message:
+          "total_value must be at least 100 USD to create at least one token.",
       });
     }
 
-    // At least one document must be linked to the deal
-    if (!deal.documents || deal.documents.length === 0) {
-      throw new UnprocessableEntityException({
-        code: 'NO_DOCUMENTS',
-        message: 'At least one document must be linked to the deal before publishing',
-      });
-    }
-
-    // Ensure escrow account exists
-    if (!deal.escrowPublicKey || !deal.escrowSecretKey) {
-      const escrow = await this.stellarService.createEscrowAccount(deal.id);
-      deal.escrowPublicKey = escrow.publicKey;
-      deal.escrowSecretKey = escrow.secretKey;
-      await this.tradeDealRepo.save(deal);
-    }
-
-    // Enqueue the deal.publish job
-    await this.queueService.emit('deal.publish', {
-      dealId: deal.id,
-      tokenSymbol: deal.tokenSymbol,
-      escrowPublicKey: deal.escrowPublicKey,
-      escrowSecretKey: deal.escrowSecretKey,
-      tokenCount: deal.tokenCount,
+    const tradeDeal = this.tradeDealRepo.create({
+      commodity: dto.commodity,
+      quantity: dto.quantity,
+      quantityUnit: dto.quantity_unit,
+      totalValue: dto.total_value,
+      tokenCount,
+      tokenSymbol: "PENDING",
+      status: "draft",
+      farmerId: dto.farmer_id,
+      traderId,
+      totalInvested: 0,
+      deliveryDate: new Date(dto.delivery_date),
+      escrowPublicKey: null,
+      escrowSecretKey: null,
+      issuerPublicKey: null,
+      stellarAssetTxId: null,
     });
 
-    return deal;
+    const savedDeal = await this.tradeDealRepo.save(tradeDeal);
+
+    savedDeal.tokenSymbol = this.generateTokenSymbol(
+      savedDeal.commodity,
+      savedDeal.id,
+    );
+
+    return this.tradeDealRepo.save(savedDeal);
   }
 
   async findOne(id: string): Promise<any> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id },
-      relations: ['farmer', 'trader', 'documents', 'investments'],
+      relations: ["farmer", "trader", "documents", "investments"],
     });
 
     if (!deal) {
-      throw new NotFoundException('Trade deal not found');
+      throw new NotFoundException("Trade deal not found");
     }
 
-    // Load milestones for this deal
     const milestones = await this.milestoneRepo.find({
       where: { tradeDealId: id },
-      order: { recordedAt: 'ASC' },
+      order: { recordedAt: "ASC" },
     });
 
-    // Calculate tokens remaining
-    const confirmedInvestments = deal.investments?.filter(inv => inv.status === 'confirmed') || [];
-    const tokensSold = confirmedInvestments.reduce((sum, inv) => sum + inv.tokenAmount, 0);
-    const tokensRemaining = deal.tokenCount - tokensSold;
+    const confirmedInvestments =
+      deal.investments?.filter((inv) => inv.status === "confirmed") || [];
+    const tokensSold = confirmedInvestments.reduce(
+      (sum, inv) => sum + Number(inv.tokenAmount),
+      0,
+    );
+    const tokensRemaining = Number(deal.tokenCount) - tokensSold;
 
     return {
       id: deal.id,
@@ -110,10 +124,17 @@ export class TradeDealsService {
       deliveryDate: deal.deliveryDate,
       status: deal.status,
       tokenCount: deal.tokenCount,
+      tokenSymbol: deal.tokenSymbol,
+      totalInvested: deal.totalInvested,
+      farmerId: deal.farmerId,
+      traderId: deal.traderId,
       tokensRemaining,
-      traderName: deal.trader?.email || 'Unknown Trader',
-      description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(deal.deliveryDate).toLocaleDateString()}`,
-      milestones: milestones.map(milestone => ({
+      traderName: deal.trader?.email || "Unknown Trader",
+      description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
+        deal.deliveryDate,
+      ).toLocaleDateString()}`,
+      documents: deal.documents ?? [],
+      milestones: milestones.map((milestone) => ({
         id: milestone.id,
         milestone: milestone.milestone,
         notes: milestone.notes,
@@ -124,14 +145,13 @@ export class TradeDealsService {
     };
   }
 
-  async updateDealStatus(
-    dealId: string,
-    status: DealStatus,
-    stellarAssetTxId?: string,
-  ): Promise<void> {
-    await this.tradeDealRepo.update(dealId, {
-      status,
-      ...(stellarAssetTxId && { stellarAssetTxId }),
-    });
+  private generateTokenSymbol(commodity: string, dealId: string): string {
+    const commodityCode = commodity
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 8);
+
+    const dealShortId = dealId.replace(/-/g, "").slice(-4);
+    return `${commodityCode}${dealShortId}`.slice(0, 12);
   }
 }

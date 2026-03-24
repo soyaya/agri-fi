@@ -6,34 +6,42 @@ import {
   Body,
   UseGuards,
   Request,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { TradeDealsService } from './trade-deals.service';
-import { TradeDeal } from './entities/trade-deal.entity';
-import { User } from '../auth/entities/user.entity';
+  ForbiddenException,
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
+import { TradeDealsService } from "./trade-deals.service";
+import { TradeDeal } from "./entities/trade-deal.entity";
+import { User } from "../auth/entities/user.entity";
+import { KycGuard } from "../auth/kyc.guard";
+import { CreateTradeDealDto } from "./dto/create-trade-deal.dto";
 
 interface AuthRequest extends Request {
   user: User;
 }
 
-@Controller('trade-deals')
-@UseGuards(AuthGuard('jwt'))
+@Controller("trade-deals")
 export class TradeDealsController {
   constructor(private readonly tradeDealsService: TradeDealsService) {}
 
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<TradeDeal> {
-    return this.tradeDealsService.findOne(id);
+  @Post()
+  @UseGuards(AuthGuard("jwt"), KycGuard)
+  async createDeal(
+    @Request() req: AuthRequest,
+    @Body() dto: CreateTradeDealDto,
+  ): Promise<TradeDeal> {
+    if (req.user.role !== "trader") {
+      throw new ForbiddenException({
+        code: "ROLE_REQUIRED",
+        message: "Only traders can create trade deals.",
+      });
+    }
+
+    return this.tradeDealsService.createDeal(req.user.id, dto);
   }
 
-  @Post(':id/publish')
-  @HttpCode(HttpStatus.OK)
-  async publishDeal(
-    @Param('id') id: string,
-    @Request() req: AuthRequest,
-  ): Promise<TradeDeal> {
-    return this.tradeDealsService.publishDeal(id, req.user.id);
+  @Get(":id")
+  @UseGuards(AuthGuard("jwt"))
+  async findOne(@Param("id") id: string): Promise<any> {
+    return this.tradeDealsService.findOne(id);
   }
 }
