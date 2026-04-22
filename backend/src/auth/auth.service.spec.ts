@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
@@ -104,13 +104,22 @@ describe('AuthService', () => {
   });
 
   describe('linkWallet', () => {
-    it('updates wallet address', async () => {
+    const VALID_STELLAR_KEY = 'GB5HA3VWSBWS47VIKMOOMTMA2AHEWREUKA42GFEABACC4MVWL2L7FKGE';
+
+    it('updates wallet address with a valid Stellar public key', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
-      userRepo.save.mockResolvedValue({ ...user, walletAddress: 'GABC123' });
+      userRepo.save.mockResolvedValue({ ...user, walletAddress: VALID_STELLAR_KEY });
 
-      const result = await service.linkWallet('uuid-1', 'GABC123');
-      expect(result.walletAddress).toBe('GABC123');
+      const result = await service.linkWallet('uuid-1', VALID_STELLAR_KEY);
+      expect(result.walletAddress).toBe(VALID_STELLAR_KEY);
+    });
+
+    it('throws NotFoundException when user does not exist', async () => {
+      userRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.linkWallet('no-such-id', VALID_STELLAR_KEY),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
