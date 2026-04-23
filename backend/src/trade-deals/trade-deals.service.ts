@@ -29,6 +29,7 @@ export interface AddDocumentDto {
   storageUrl: string;
   stellarTxId?: string | null;
   fileSizeBytes?: number;
+  memoText?: string | null;
 }
 
 @Injectable()
@@ -291,6 +292,7 @@ export class TradeDealsService {
       ipfsHash: dto.ipfsHash,
       storageUrl: dto.storageUrl,
       stellarTxId: dto.stellarTxId ?? null,
+      memoText: dto.memoText ?? null,
     });
 
     return this.documentRepo.save(doc);
