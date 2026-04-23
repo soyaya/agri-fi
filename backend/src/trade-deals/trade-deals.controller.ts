@@ -14,6 +14,7 @@ import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
+import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 
 interface AuthRequest extends Request {
@@ -54,7 +55,7 @@ export class TradeDealsController {
   }
 
   @Get(':id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(OptionalJwtGuard)
   async findOne(@Param('id') id: string): Promise<any> {
     return this.tradeDealsService.findOne(id);
   }
