@@ -1,38 +1,22 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsString, IsUrl } from 'class-validator';
 
 export class KycDto {
   @ApiProperty({
-    enum: [
-      'purchase_agreement',
-      'bill_of_lading',
-      'export_certificate',
-      'warehouse_receipt',
-    ],
-    example: 'bill_of_lading',
-    description: 'Type of KYC document',
-  })
-  @IsIn([
-    'purchase_agreement',
-    'bill_of_lading',
-    'export_certificate',
-    'warehouse_receipt',
-  ])
-  docType: string;
-
-  @ApiProperty({
-    example: 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
-    description: 'IPFS content hash of the document',
+    example: 'https://s3.amazonaws.com/bucket/gov-id.pdf',
+    description: 'URL of the uploaded government ID document',
   })
   @IsString()
   @IsNotEmpty()
-  ipfsHash: string;
+  @IsUrl()
+  governmentIdUrl: string;
 
   @ApiProperty({
-    example: 'https://s3.amazonaws.com/bucket/doc.pdf',
-    description: 'Fallback S3 URL for the document',
+    example: 'https://s3.amazonaws.com/bucket/proof-of-address.pdf',
+    description: 'URL of the uploaded proof of address document',
   })
   @IsString()
   @IsNotEmpty()
-  storageUrl: string;
+  @IsUrl()
+  proofOfAddressUrl: string;
 }
