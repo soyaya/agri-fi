@@ -106,22 +106,29 @@ export const apiClient = {
     return raw ? (JSON.parse(raw) as User) : null;
   },
 
+  // GET /users/me/deals
   async getFarmerDeals(): Promise<Deal[]> {
-    return apiFetch<Deal[]>('/trade-deals/my');
+    return apiFetch<Deal[]>('/users/me/deals');
   },
 
+  // GET /users/me/deals
   async getTraderDeals(): Promise<Deal[]> {
-    return apiFetch<Deal[]>('/trade-deals/my');
+    return apiFetch<Deal[]>('/users/me/deals');
   },
 
+  // GET /investments/my-investments
   async getInvestorInvestments(): Promise<Investment[]> {
-    return apiFetch<Investment[]>('/investments/my');
+    return apiFetch<Investment[]>('/investments/my-investments');
   },
 
-  async recordMilestone(dealId: string, data: { title: string; description: string }) {
-    return apiFetch(`/shipments/${dealId}/milestones`, {
+  // POST /shipments/milestones  — trade_deal_id + milestone + notes in body
+  async recordMilestone(
+    dealId: string,
+    data: { milestone: 'farm' | 'warehouse' | 'port' | 'importer'; notes?: string },
+  ) {
+    return apiFetch('/shipments/milestones', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ trade_deal_id: dealId, ...data }),
     });
   },
 };
