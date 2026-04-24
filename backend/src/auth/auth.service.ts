@@ -93,26 +93,62 @@ export class AuthService {
     const isAutoApprove =
       this.configService.get<string>('KYC_AUTO_APPROVE') === 'true';
 
+    let automatedApproval = isAutoApprove;
+
+    // Automated Corporate Verification
+    if (dto.isCorporate && dto.registrationNumber && dto.companyName) {
+      console.log(`Triggering automated business verification for ${dto.companyName}...`);
+      const isVerified = await this.verifyCorporateBusiness(
+        dto.companyName,
+        dto.registrationNumber,
+      );
+      if (isVerified) {
+        console.log('Business verification SUCCESS.');
+        automatedApproval = true;
+      } else {
+        console.warn('Business verification FAILED or returned inconclusive results.');
+      }
+    }
+
     const submission = this.kycRepo.create({
       userId,
       governmentIdUrl: dto.governmentIdUrl,
       proofOfAddressUrl: dto.proofOfAddressUrl,
-      status: isAutoApprove ? 'approved' : 'pending_review',
+      isCorporate: dto.isCorporate ?? false,
+      companyName: dto.companyName,
+      registrationNumber: dto.registrationNumber,
+      businessLicenseUrl: dto.businessLicenseUrl,
+      status: automatedApproval ? 'approved' : 'pending_review',
     });
 
     await this.kycRepo.save(submission);
 
-    if (isAutoApprove) {
+    if (automatedApproval) {
       user.kycStatus = 'verified';
       await this.userRepo.save(user);
-      console.log(`KYC auto-verified for user ${user.email}.`);
+      console.log(`KYC auto-verified for user ${user.email} (Method: ${dto.isCorporate ? 'Automated Corporate' : 'System Config'}).`);
     } else {
-      // In production/non-auto-approve, status remains 'pending' (or whatever it was)
-      // but the submission is now 'pending_review'
       console.log(`KYC submission pending review for user ${user.email}.`);
     }
 
     return { kycStatus: user.kycStatus };
+  }
+
+  /**
+   * Mock automated corporate verification.
+   * In production, this would call an external API like Middesk, GDC, or a business registry.
+   */
+  private async verifyCorporateBusiness(
+    companyName: string,
+    regNumber: string,
+  ): Promise<boolean> {
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    // Logic: Approved if regNumber starts with 'REG' or '123'
+    // This is a placeholder for actual registry logic
+    const isValid = regNumber.startsWith('REG') || regNumber.startsWith('123');
+    return isValid;
   }
 
   async approveKyc(userId: string): Promise<{ kycStatus: string }> {

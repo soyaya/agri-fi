@@ -1,3 +1,4 @@
+import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getDealById } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
@@ -6,6 +7,38 @@ import { ShipmentTimeline } from '@/components/ShipmentTimeline';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 export const revalidate = 60;
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const deal = await getDealById(params.id);
+  if (!deal) return { title: 'Deal Not Found' };
+
+  const title = `${deal.commodity.charAt(0).toUpperCase() + deal.commodity.slice(1)} Trade Deal | Agri-Fi`;
+  const description = `Investment opportunity: ${deal.commodity} trade deal with a total value of $${Number(deal.total_value).toLocaleString()}. ${deal.quantity} ${deal.quantity_unit} available for funding.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      images: [
+        {
+          url: 'https://images.unsplash.com/photo-1595113316349-9fa4eb24f884?q=80&w=1200&h=630&auto=format&fit=crop',
+          width: 1200,
+          height: 630,
+          alt: `${deal.commodity} Trade Deal`,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: ['https://images.unsplash.com/photo-1595113316349-9fa4eb24f884?q=80&w=1200&h=630&auto=format&fit=crop'],
+    },
+  };
+}
 
 const MILESTONE_ORDER = ['farm', 'warehouse', 'port', 'importer'];
 
