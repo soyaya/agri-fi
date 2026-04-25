@@ -16,6 +16,7 @@ import { QueueProcessorModule } from './queue/queue-processor.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
+import { TerminusModule } from '@nestjs/terminus';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { HealthModule } from './health/health.module';
     DocumentsModule,
     QueueProcessorModule,
     HealthModule,
+    TerminusModule,
   ],
 })
 export class AppModule implements NestModule {

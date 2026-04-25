@@ -37,7 +37,7 @@ export class EscrowService {
   async processDealDelivered(payload: DealDeliveredPayload): Promise<void> {
     const { tradeDealId } = payload;
 
-    this.logger.log(`Processing deal.delivered for deal ${tradeDealId}`);
+    this.logger.info(`Processing deal.delivered for deal ${tradeDealId}`);
 
     try {
       await this.dataSource.transaction(async (manager) => {
@@ -174,7 +174,7 @@ export class EscrowService {
         // Update deal status to completed
         await manager.update(TradeDeal, tradeDealId, { status: 'completed' });
 
-        this.logger.log(
+        this.logger.info(
           `Deal ${tradeDealId} completed successfully. Stellar TX: ${stellarTxId}`,
         );
 
@@ -213,7 +213,7 @@ export class EscrowService {
         timestamp: new Date().toISOString(),
       });
 
-      this.logger.log(
+      this.logger.info(
         `Admin alert sent for failed escrow release: ${tradeDealId}`,
       );
     } catch (alertError) {
@@ -281,7 +281,7 @@ export class EscrowService {
         });
       }
 
-      this.logger.log(`Completion notifications sent for deal ${tradeDealId}`);
+      this.logger.info(`Completion notifications sent for deal ${tradeDealId}`);
     } catch (error) {
       this.logger.error(
         `Failed to send completion notifications for deal ${tradeDealId}`,

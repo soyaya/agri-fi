@@ -15,9 +15,17 @@ import { ConfigService } from '@nestjs/config';
 import { CreateMilestoneDto } from './dto/create-milestone.dto';
 import { QueueService } from '../queue/queue.service';
 import { DataSource } from 'typeorm';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
 let queueService: { enqueueDealDelivered: jest.Mock };
 let dataSource: { transaction: jest.Mock };
+
+const mockDeal = {
+  id: 'deal-1',
+  status: 'funded',
+  traderId: 'trader-1',
+  escrowSecretKey: 'escrow-secret',
+};
 
 const mockMilestone = (): ShipmentMilestone => ({
   id: 'milestone-1',
@@ -56,10 +64,11 @@ describe('ShipmentsService', () => {
     dataSource = {
       transaction: jest.fn(async (cb) =>
         cb({
-          query: milestoneRepo.manager.query,
+          findOne: jest.fn(),
           find: milestoneRepo.find,
           create: milestoneRepo.create,
           save: milestoneRepo.save,
+          update: jest.fn(),
         }),
       ),
     };
@@ -70,6 +79,10 @@ describe('ShipmentsService', () => {
         {
           provide: getRepositoryToken(ShipmentMilestone),
           useValue: milestoneRepo,
+        },
+        {
+          provide: getRepositoryToken(TradeDeal),
+          useValue: { findOne: jest.fn(), update: jest.fn() },
         },
         { provide: StellarService, useValue: stellarService },
         { provide: QueueService, useValue: queueService },
@@ -82,12 +95,6 @@ describe('ShipmentsService', () => {
   });
 
   describe('recordMilestone', () => {
-    const mockDeal = {
-      id: 'deal-1',
-      status: 'funded',
-      trader_id: 'trader-1',
-      escrow_secret_key: 'escrow-secret',
-    };
 
     it('records first milestone (farm) for funded deal', async () => {
       const dto: CreateMilestoneDto = {
@@ -96,20 +103,21 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([]);
       milestoneRepo.create.mockReturnValue(mockMilestone());
       milestoneRepo.save.mockResolvedValue(mockMilestone());
       stellarService.recordMemo.mockResolvedValue('stellar-tx-123');
 
       const result = await service.recordMilestone('trader-1', dto);
-
-      expect(milestoneRepo.manager.query).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'SELECT id, status, trader_id, escrow_secret_key FROM trade_deals',
-        ),
-        ['deal-1'],
-      );
 
       expect(milestoneRepo.create).toHaveBeenCalledWith(ShipmentMilestone, {
         tradeDealId: 'deal-1',
@@ -130,7 +138,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods at port',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([
         { ...mockMilestone(), milestone: 'farm' },
       ]);
@@ -147,7 +163,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods at port',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([
         { ...mockMilestone(), milestone: 'farm' },
       ]);
@@ -175,7 +199,15 @@ describe('ShipmentsService', () => {
 
       const importerMilestone = { ...mockMilestone(), milestone: 'importer' };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue(existingMilestones);
       milestoneRepo.create.mockReturnValue(importerMilestone);
       milestoneRepo.save.mockResolvedValue(importerMilestone);
@@ -198,7 +230,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(null),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
 
       await expect(service.recordMilestone('trader-1', dto)).rejects.toThrow(
         NotFoundException,
@@ -213,7 +253,15 @@ describe('ShipmentsService', () => {
       };
 
       const unfundedDeal = { ...mockDeal, status: 'open' };
-      milestoneRepo.manager.query.mockResolvedValue([unfundedDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(unfundedDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
 
       await expect(service.recordMilestone('trader-1', dto)).rejects.toThrow(
         UnprocessableEntityException,
@@ -227,7 +275,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
 
       await expect(
         service.recordMilestone('other-trader', dto),
@@ -249,7 +305,15 @@ describe('ShipmentsService', () => {
         { ...mockMilestone(), milestone: 'importer' },
       ];
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue(allMilestones);
 
       await expect(service.recordMilestone('trader-1', dto)).rejects.toThrow(
@@ -264,8 +328,16 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      const dealWithoutSecret = { ...mockDeal, escrow_secret_key: null };
-      milestoneRepo.manager.query.mockResolvedValue([dealWithoutSecret]);
+      const dealWithoutSecret = { ...mockDeal, escrowSecretKey: null };
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(dealWithoutSecret),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([]);
       milestoneRepo.create.mockReturnValue(mockMilestone());
       milestoneRepo.save.mockResolvedValue(mockMilestone());
@@ -291,7 +363,15 @@ describe('ShipmentsService', () => {
       const existingMilestones = [{ ...mockMilestone(), milestone: 'farm' }];
       const warehouseMilestone = { ...mockMilestone(), milestone: 'warehouse' };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue(existingMilestones);
       milestoneRepo.create.mockReturnValue(warehouseMilestone);
       milestoneRepo.save.mockResolvedValue(warehouseMilestone);

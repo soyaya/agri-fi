@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from './stellar.service';
+import { PinoLogger } from 'nestjs-pino';
 
 /**
  * Unit tests for StellarService — pure logic that doesn't require network calls.
@@ -27,6 +28,15 @@ describe('StellarService', () => {
       providers: [
         StellarService,
         { provide: ConfigService, useValue: mockConfig },
+        {
+          provide: PinoLogger,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -91,6 +101,8 @@ describe('StellarService', () => {
       const mockAccount = {
         sequenceNumber: () => '1',
         incrementSequenceNumber: jest.fn(),
+        accountId: () =>
+          'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',
       };
 
       (service as any).server = {
@@ -99,17 +111,19 @@ describe('StellarService', () => {
       };
 
       const secret =
-        'SBTBBMK2NRE6B6L7P6BOMJ6M2NRE6B6L7P6BOMJ6M2NRE6B6L7P6BOMJ6';
+        'SCM3CKKHLKTXOMML76C77C4OTVNE74CPUJJL32KNO3JAYZFVO544ENRP';
       const result = await service.transferTradeTokens(
         secret,
-        'GB...',
-        'GC...',
+        'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',
+        'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',
         'TOKEN',
         100,
       );
 
       expect(result).toBe('mock-tx-hash');
-      expect((service as any).server.loadAccount).toHaveBeenCalledWith('GB...');
+      expect((service as any).server.loadAccount).toHaveBeenCalledWith(
+        'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',
+      );
       expect((service as any).server.submitTransaction).toHaveBeenCalled();
     });
   });

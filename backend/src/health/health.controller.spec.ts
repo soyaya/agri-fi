@@ -4,6 +4,8 @@ import {
   HealthCheckService,
   TypeOrmHealthIndicator,
   MicroserviceHealthIndicator,
+  MemoryHealthIndicator,
+  DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { ConfigService } from '@nestjs/config';
 
@@ -12,13 +14,22 @@ describe('HealthController', () => {
   let health: HealthCheckService;
 
   const mockHealthCheckService = {
-    check: jest.fn(),
+    check: jest.fn((indicators: any[]) =>
+      Promise.all(indicators.map((indicator) => indicator())),
+    ),
   };
   const mockDbIndicator = {
     pingCheck: jest.fn(),
   };
   const mockMicroserviceIndicator = {
     pingCheck: jest.fn(),
+  };
+  const mockMemoryIndicator = {
+    checkHeap: jest.fn(),
+    checkRSS: jest.fn(),
+  };
+  const mockDiskIndicator = {
+    checkStorage: jest.fn(),
   };
   const mockConfigService = {
     get: jest.fn().mockReturnValue('amqp://localhost'),
@@ -34,6 +45,8 @@ describe('HealthController', () => {
           provide: MicroserviceHealthIndicator,
           useValue: mockMicroserviceIndicator,
         },
+        { provide: MemoryHealthIndicator, useValue: mockMemoryIndicator },
+        { provide: DiskHealthIndicator, useValue: mockDiskIndicator },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
@@ -54,5 +67,8 @@ describe('HealthController', () => {
       'rabbitmq',
       expect.any(Object),
     );
+    expect(mockMemoryIndicator.checkHeap).toHaveBeenCalled();
+    expect(mockMemoryIndicator.checkRSS).toHaveBeenCalled();
+    expect(mockDiskIndicator.checkStorage).toHaveBeenCalled();
   });
 });
