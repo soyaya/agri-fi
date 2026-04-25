@@ -5,11 +5,11 @@ import { UsersService } from './users.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
-import { Document } from '../trade-deals/entities/document.entity';
+import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TradeDeal, Investment, ShipmentMilestone, Document]),
+    TypeOrmModule.forFeature([TradeDeal, Investment, ShipmentMilestone, PaymentDistribution]),
   ],
   controllers: [UsersController],
   providers: [UsersService],

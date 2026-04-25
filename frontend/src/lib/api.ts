@@ -64,6 +64,9 @@ export interface Investment {
   token_holdings: number;
   status: "pending" | "confirmed" | "failed";
   created_at: string;
+  expected_return_usd: number;
+  actual_return_usd: number | null;
+  return_percentage: number | null;
   deal: Deal;
 }
 

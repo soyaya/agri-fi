@@ -1,139 +1,105 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
-import { Document } from '../trade-deals/entities/document.entity';
+import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
-const mockDeal = (id: string, overrides = {}): TradeDeal =>
-  ({
-    id,
-    commodity: 'cocoa',
-    quantity: 100,
-    totalValue: 10000,
-    totalInvested: 0,
-    status: 'open',
-    deliveryDate: new Date('2026-12-01'),
-    farmerId: 'farmer-1',
-    traderId: 'trader-1',
-    ...overrides,
-  }) as TradeDeal;
+const mockDeal = (overrides = {}) => ({
+  id: 'deal-1',
+  commodity: 'Cocoa',
+  status: 'open',
+  totalValue: 10000,
+  tokenCount: 100,
+  ...overrides,
+});
 
-describe('UsersService', () => {
+const mockInvestment = (overrides = {}) => ({
+  id: 'inv-1',
+  investorId: 'user-1',
+  tokenAmount: 10,
+  amountUsd: 1000,
+  status: 'confirmed',
+  stellarTxId: null,
+  createdAt: new Date(),
+  tradeDeal: mockDeal(),
+  ...overrides,
+});
+
+describe('UsersService.getUserInvestments', () => {
   let service: UsersService;
-
-  const tradeDealRepo = { find: jest.fn() };
-  const investmentRepo = { find: jest.fn() };
-  const milestoneRepo = { findOne: jest.fn() };
-  const documentRepo = { createQueryBuilder: jest.fn() };
-
-  // Helper to mock the GROUP BY query chain
-  const mockDocumentCounts = (rows: { trade_deal_id: string; count: string }[]) => {
-    const qb = {
-      select: jest.fn().mockReturnThis(),
-      addSelect: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      groupBy: jest.fn().mockReturnThis(),
-      getRawMany: jest.fn().mockResolvedValue(rows),
-    };
-    documentRepo.createQueryBuilder.mockReturnValue(qb);
-    return qb;
-  };
+  let investmentRepo: { find: jest.Mock };
+  let paymentDistRepo: { findOne: jest.Mock };
 
   beforeEach(async () => {
-    jest.clearAllMocks();
-    milestoneRepo.findOne.mockResolvedValue(null);
+    investmentRepo = { find: jest.fn() };
+    paymentDistRepo = { findOne: jest.fn() };
 
-    const module: TestingModule = await Test.createTestingModule({
+    const module = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepo },
+        { provide: getRepositoryToken(TradeDeal), useValue: { find: jest.fn() } },
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
-        { provide: getRepositoryToken(ShipmentMilestone), useValue: milestoneRepo },
-        { provide: getRepositoryToken(Document), useValue: documentRepo },
+        { provide: getRepositoryToken(ShipmentMilestone), useValue: { findOne: jest.fn() } },
+        { provide: getRepositoryToken(PaymentDistribution), useValue: paymentDistRepo },
       ],
     }).compile();
 
-    service = module.get<UsersService>(UsersService);
+    service = module.get(UsersService);
   });
 
-  describe('getUserDeals – document_count', () => {
-    it('returns document_count: 0 when a deal has no documents', async () => {
-      const deal = mockDeal('deal-1');
-      tradeDealRepo.find.mockResolvedValue([deal]);
-      mockDocumentCounts([]); // no rows returned
+  it('throws ForbiddenException for non-investor role', async () => {
+    await expect(service.getUserInvestments('user-1', 'farmer')).rejects.toThrow(ForbiddenException);
+  });
 
-      const result = await service.getUserDeals('farmer-1', 'farmer');
+  it('calculates expected_return_usd as (tokenAmount / tokenCount) * totalValue', async () => {
+    investmentRepo.find.mockResolvedValue([mockInvestment()]);
+    paymentDistRepo.findOne.mockResolvedValue(null);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].document_count).toBe(0);
-    });
+    const [result] = await service.getUserInvestments('user-1', 'investor');
 
-    it('returns document_count: 1 when a deal has one document', async () => {
-      const deal = mockDeal('deal-1');
-      tradeDealRepo.find.mockResolvedValue([deal]);
-      mockDocumentCounts([{ trade_deal_id: 'deal-1', count: '1' }]);
+    // (10 / 100) * 10000 = 1000
+    expect(result.expected_return_usd).toBe(1000);
+  });
 
-      const result = await service.getUserDeals('farmer-1', 'farmer');
+  it('returns null actual_return_usd and return_percentage for non-completed deals', async () => {
+    investmentRepo.find.mockResolvedValue([mockInvestment({ tradeDeal: mockDeal({ status: 'funded' }) })]);
+    paymentDistRepo.findOne.mockResolvedValue(null);
 
-      expect(result[0].document_count).toBe(1);
-    });
+    const [result] = await service.getUserInvestments('user-1', 'investor');
 
-    it('returns document_count: 5 when a deal has multiple documents', async () => {
-      const deal = mockDeal('deal-1');
-      tradeDealRepo.find.mockResolvedValue([deal]);
-      mockDocumentCounts([{ trade_deal_id: 'deal-1', count: '5' }]);
+    expect(result.actual_return_usd).toBeNull();
+    expect(result.return_percentage).toBeNull();
+  });
 
-      const result = await service.getUserDeals('farmer-1', 'farmer');
+  it('returns actual_return_usd from PaymentDistribution for completed deals', async () => {
+    investmentRepo.find.mockResolvedValue([mockInvestment({ tradeDeal: mockDeal({ status: 'completed' }) })]);
+    paymentDistRepo.findOne.mockResolvedValue({ amountUsd: 1200 });
 
-      expect(result[0].document_count).toBe(5);
-    });
+    const [result] = await service.getUserInvestments('user-1', 'investor');
 
-    it('returns correct counts for multiple deals in a single query', async () => {
-      const deal1 = mockDeal('deal-1');
-      const deal2 = mockDeal('deal-2');
-      const deal3 = mockDeal('deal-3');
-      tradeDealRepo.find.mockResolvedValue([deal1, deal2, deal3]);
-      mockDocumentCounts([
-        { trade_deal_id: 'deal-1', count: '0' },
-        { trade_deal_id: 'deal-2', count: '3' },
-        // deal-3 absent from results → should default to 0
-      ]);
+    expect(result.actual_return_usd).toBe(1200);
+  });
 
-      const result = await service.getUserDeals('farmer-1', 'farmer');
+  it('calculates return_percentage correctly for completed deals', async () => {
+    // invested 1000, got back 1200 => 20%
+    investmentRepo.find.mockResolvedValue([mockInvestment({ tradeDeal: mockDeal({ status: 'completed' }) })]);
+    paymentDistRepo.findOne.mockResolvedValue({ amountUsd: 1200 });
 
-      const byId = Object.fromEntries(result.map((r) => [r.id, r]));
-      expect(byId['deal-1'].document_count).toBe(0);
-      expect(byId['deal-2'].document_count).toBe(3);
-      expect(byId['deal-3'].document_count).toBe(0);
-    });
+    const [result] = await service.getUserInvestments('user-1', 'investor');
 
-    it('issues exactly one GROUP BY query regardless of deal count', async () => {
-      const deals = ['deal-1', 'deal-2', 'deal-3'].map((id) => mockDeal(id));
-      tradeDealRepo.find.mockResolvedValue(deals);
-      const qb = mockDocumentCounts([]);
+    expect(result.return_percentage).toBeCloseTo(20);
+  });
 
-      await service.getUserDeals('farmer-1', 'farmer');
+  it('returns null actual_return_usd when no PaymentDistribution found for completed deal', async () => {
+    investmentRepo.find.mockResolvedValue([mockInvestment({ tradeDeal: mockDeal({ status: 'completed' }) })]);
+    paymentDistRepo.findOne.mockResolvedValue(null);
 
-      expect(documentRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
-      expect(qb.getRawMany).toHaveBeenCalledTimes(1);
-    });
+    const [result] = await service.getUserInvestments('user-1', 'investor');
 
-    it('returns empty array without querying documents when user has no deals', async () => {
-      tradeDealRepo.find.mockResolvedValue([]);
-
-      const result = await service.getUserDeals('farmer-1', 'farmer');
-
-      expect(result).toEqual([]);
-      expect(documentRepo.createQueryBuilder).not.toHaveBeenCalled();
-    });
-
-    it('throws ForbiddenException for investor role', async () => {
-      await expect(service.getUserDeals('investor-1', 'investor')).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
+    expect(result.actual_return_usd).toBeNull();
+    expect(result.return_percentage).toBeNull();
   });
 });
