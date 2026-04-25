@@ -59,7 +59,12 @@ export class StellarService {
       : Asset.native(); // fallback to XLM only if issuer not configured
 
     this.logger.info(
-      { network, horizonUrl, usdcAssetCode, usdcIssuer: usdcIssuer || 'NOT_SET' },
+      {
+        network,
+        horizonUrl,
+        usdcAssetCode,
+        usdcIssuer: usdcIssuer || 'NOT_SET',
+      },
       `StellarService initialized on ${network}`,
     );
   }
@@ -550,6 +555,7 @@ export class StellarService {
     assetCode: string,
     tokenAmount: number,
     issuerPublicKey: string,
+    complianceData?: Record<string, unknown>,
   ): Promise<string> {
     const investorAccount = await this.server.loadAccount(investorWallet);
     const tradeAsset = new Asset(assetCode, issuerPublicKey);
@@ -573,7 +579,7 @@ export class StellarService {
 
     const txBuilder = new TransactionBuilder(investorAccount, {
     // Use USDC for stable USD-denominated payments
-    const tx = new TransactionBuilder(investorAccount, {
+    const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
     });
@@ -594,6 +600,11 @@ export class StellarService {
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
       .setTimeout(300);
+      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`));
+
+    this.addComplianceDataOperations(txBuilder, complianceData);
+
+    const tx = txBuilder.setTimeout(300).build();
 
     return txBuilder.build().toXDR();
   }
@@ -610,6 +621,7 @@ export class StellarService {
       amountUSD: number;
       assetCode: string;
       tokenAmount: number;
+      complianceData?: Record<string, unknown>;
     }>,
   ): Promise<string> {
     const MAX_OPS = 100;
@@ -641,6 +653,7 @@ export class StellarService {
           amount: inv.amountUSD.toFixed(7),
         }),
       );
+      this.addComplianceDataOperations(txBuilder, inv.complianceData);
     }
 
     // Build a single memo summarising the bulk (max 28 bytes)
@@ -660,6 +673,27 @@ export class StellarService {
     );
 
     return tx.toXDR();
+  }
+
+  private addComplianceDataOperations(
+    txBuilder: TransactionBuilder,
+    complianceData?: Record<string, unknown>,
+  ): void {
+    if (!complianceData) return;
+
+    const encoded = Buffer.from(JSON.stringify(complianceData)).toString(
+      'base64',
+    );
+    const chunks = encoded.match(/.{1,64}/g) ?? [];
+
+    chunks.slice(0, 4).forEach((chunk, index) => {
+      txBuilder.addOperation(
+        Operation.manageData({
+          name: `fatf_${index + 1}`,
+          value: chunk,
+        }),
+      );
+    });
   }
 
   /**
