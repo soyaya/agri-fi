@@ -288,4 +288,25 @@ export class InvestmentsController {
   ) {
     return this.stellarService.getActiveOffersForToken(tokenCode, tokenIssuer);
   }
+
+  /**
+   * Issue #112 — Secondary Market: Fetch active buy orders (bids) for a trade token.
+   */
+  @Get('buy-orders/:tokenCode/:tokenIssuer')
+  @ApiOperation({
+    summary: 'Get active DEX buy offers for a trade token (buy order book)',
+  })
+  @ApiParam({ name: 'tokenCode', description: 'Trade token asset code' })
+  @ApiParam({
+    name: 'tokenIssuer',
+    description: 'Trade token issuer public key',
+  })
+  @ApiResponse({ status: 200, description: 'List of active buy offers' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getActiveBuyOrders(
+    @Param('tokenCode') tokenCode: string,
+    @Param('tokenIssuer') tokenIssuer: string,
+  ) {
+    return this.stellarService.getActiveBuyOrdersForToken(tokenCode, tokenIssuer);
+  }
 }

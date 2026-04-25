@@ -47,6 +47,21 @@ export class AdminController {
     return this.authService.approveKyc(userId);
   }
 
+  @Post('kyc/:id/approve-corporate')
+  @ApiOperation({ summary: 'Approve a corporate KYC submission by id' })
+  @ApiResponse({ status: 200, description: 'Corporate KYC approved' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Submission not found' })
+  async approveCorporateKyc(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.authService.approveCorporateKycSubmission(id);
+  }
+
   @Post('users/:userId/role')
   @ApiOperation({ summary: 'Update a user role and invalidate old tokens' })
   @ApiBody({ type: UpdateUserRoleDto })

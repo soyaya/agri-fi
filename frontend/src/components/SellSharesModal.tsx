@@ -12,7 +12,7 @@ interface SellSharesModalProps {
 }
 
 /**
- * Issue #88 — Secondary Market Offer Creation for Trade Tokens
+ * Issue #112 — Secondary Market Offer Creation for Trade Tokens
  *
  * Lets investors list their trade-token shares for sale on the Stellar DEX
  * by creating a manageSellOffer transaction signed via their connected wallet.
@@ -56,7 +56,7 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('authToken');
+      const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Please log in first.');
 
       // Step 1: Get unsigned XDR for the sell offer from backend

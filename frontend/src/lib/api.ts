@@ -44,6 +44,7 @@ export interface Deal {
   funded_amount: number;
   total_invested: number;
   token_symbol: string;
+  issuer_public_key?: string | null;
   status: "draft" | "open" | "funded" | "delivered" | "completed" | "failed";
   delivery_date: string;
   created_at: string;
@@ -112,6 +113,8 @@ function normalizeInvestment(investment: any): Investment {
         tradeDeal.total_invested ?? tradeDeal.totalInvested ?? 0,
       ),
       token_symbol: tradeDeal.token_symbol ?? tradeDeal.tokenSymbol ?? "",
+      issuer_public_key:
+        tradeDeal.issuer_public_key ?? tradeDeal.issuerPublicKey ?? null,
       status: tradeDeal.status ?? "draft",
       delivery_date: tradeDeal.delivery_date ?? tradeDeal.deliveryDate ?? "",
       created_at: tradeDeal.created_at ?? tradeDeal.createdAt ?? "",

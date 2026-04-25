@@ -115,6 +115,8 @@ export class ShipmentsService {
         notes: dto.notes ?? null,
         stellarTxId,
         memoText,
+        latitude: dto.latitude ?? null,
+        longitude: dto.longitude ?? null,
       });
 
       const savedMilestone = await manager.save(milestone);

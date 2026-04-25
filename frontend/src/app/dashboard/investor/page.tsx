@@ -4,12 +4,21 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient, Investment, User } from "@/lib/api";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { ShipmentTimeline } from "@/components/ShipmentTimeline";
+import { ShipmentMap } from "@/components/dashboard/ShipmentMap";
+import { OrderBook } from "@/components/OrderBook";
+import { SellSharesModal } from "@/components/SellSharesModal";
 
 export default function InvestorDashboard() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [sellModal, setSellModal] = useState<{
+    tradeTokenCode: string;
+    tradeTokenIssuer: string;
+    maxTokens: number;
+  } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -550,6 +559,47 @@ export default function InvestorDashboard() {
                           </p>
                         </div>
                       </div>
+
+                      <div className="mt-6 border-t pt-6 space-y-6">
+                        <ShipmentMap tradeDealId={investment.deal.id} />
+                        <ShipmentTimeline tradeDealId={investment.deal.id} />
+
+                        {investment.deal.issuer_public_key &&
+                          investment.deal.token_symbol && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="min-w-0">
+                                  <h3 className="text-base font-semibold text-gray-900">
+                                    Secondary Market
+                                  </h3>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    {investment.deal.token_symbol} — bids on Stellar DEX
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() =>
+                                    setSellModal({
+                                      tradeTokenCode: investment.deal.token_symbol,
+                                      tradeTokenIssuer:
+                                        investment.deal.issuer_public_key ?? "",
+                                      maxTokens: investment.token_holdings,
+                                    })
+                                  }
+                                  className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                                >
+                                  Sell Shares
+                                </button>
+                              </div>
+
+                              <OrderBook
+                                tradeTokenCode={investment.deal.token_symbol}
+                                tradeTokenIssuer={
+                                  investment.deal.issuer_public_key ?? ""
+                                }
+                              />
+                            </div>
+                          )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -558,6 +608,15 @@ export default function InvestorDashboard() {
           )}
         </div>
       </div>
+
+      {sellModal && (
+        <SellSharesModal
+          tradeTokenCode={sellModal.tradeTokenCode}
+          tradeTokenIssuer={sellModal.tradeTokenIssuer}
+          maxTokens={sellModal.maxTokens}
+          onClose={() => setSellModal(null)}
+        />
+      )}
     </ErrorBoundary>
   );
 }

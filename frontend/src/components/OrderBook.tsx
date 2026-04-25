@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 interface Offer {
   offerId: string;
-  seller: string;
+  buyer: string;
   amount: string;
   price: string;
 }
@@ -15,8 +15,8 @@ interface OrderBookProps {
 }
 
 /**
- * Issue #88 — Secondary Market: Active sell offers for a trade token.
- * Displays the DEX order book so buyers can see available listings.
+ * Issue #112 — Secondary Market: Active buy offers for a trade token.
+ * Displays the DEX buy order book so sellers can see current bids.
  */
 export const OrderBook: React.FC<OrderBookProps> = ({
   tradeTokenCode,
@@ -29,10 +29,11 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   useEffect(() => {
     if (!tradeTokenCode || !tradeTokenIssuer) return;
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
 
     fetch(
-      `/api/investments/offers/${encodeURIComponent(tradeTokenCode)}/${encodeURIComponent(tradeTokenIssuer)}`,
+      `/api/investments/buy-orders/${encodeURIComponent(tradeTokenCode)}/${encodeURIComponent(tradeTokenIssuer)}`,
       {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -53,10 +54,10 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   return (
     <section className="bg-white rounded-2xl shadow-sm border border-green-100 p-6">
       <h2 className="text-lg font-semibold text-gray-800 mb-1">
-        Secondary Market — Active Sell Orders
+        Secondary Market — Active Buy Orders
       </h2>
       <p className="text-xs text-gray-400 mb-4">
-        Stellar DEX listings for <span className="font-mono">{tradeTokenCode}</span>
+        Stellar DEX bids for <span className="font-mono">{tradeTokenCode}</span>
       </p>
 
       {isLoading && (
@@ -68,7 +69,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
       )}
 
       {!isLoading && !error && offers.length === 0 && (
-        <p className="text-sm text-gray-400">No active sell orders for this token.</p>
+        <p className="text-sm text-gray-400">No active buy orders for this token.</p>
       )}
 
       {offers.length > 0 && (
@@ -76,7 +77,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-100">
-                <th className="pb-2 pr-4 font-medium">Seller</th>
+                <th className="pb-2 pr-4 font-medium">Buyer</th>
                 <th className="pb-2 pr-4 font-medium">Amount</th>
                 <th className="pb-2 pr-4 font-medium">Price (USDC)</th>
                 <th className="pb-2 font-medium">Total</th>
@@ -90,7 +91,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                 return (
                   <tr key={offer.offerId} className="hover:bg-gray-50">
                     <td className="py-2 pr-4 font-mono text-xs text-gray-600">
-                      {truncate(offer.seller)}
+                      {truncate(offer.buyer)}
                     </td>
                     <td className="py-2 pr-4 text-gray-800">{offer.amount}</td>
                     <td className="py-2 pr-4 text-gray-800">{offer.price}</td>

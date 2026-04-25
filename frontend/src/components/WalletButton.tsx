@@ -35,7 +35,7 @@ export const WalletButton: React.FC<WalletButtonProps> = ({ onWalletLinked }) =>
       const connectedPublicKey = await connect(selectedProvider);
 
       // Link wallet to user account via API
-      const token = localStorage.getItem('authToken');
+      const token = localStorage.getItem('auth_token');
       if (token) {
         const response = await fetch('/api/auth/wallet', {
           method: 'POST',

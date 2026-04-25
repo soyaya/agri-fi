@@ -728,6 +728,38 @@ export class StellarService {
   }
 
   /**
+   * Fetches active DEX buy offers for a given trade token (i.e., bids).
+   * Used to display "Buy Orders" on the deal details page.
+   */
+  async getActiveBuyOrdersForToken(
+    tradeTokenCode: string,
+    tradeTokenIssuer: string,
+  ): Promise<
+    Array<{
+      offerId: string;
+      buyer: string;
+      amount: string;
+      price: string;
+    }>
+  > {
+    const tradeAsset = new Asset(tradeTokenCode, tradeTokenIssuer);
+
+    const offersPage = await this.server
+      .offers()
+      .selling(this.usdcAsset)
+      .buying(tradeAsset)
+      .limit(50)
+      .call();
+
+    return offersPage.records.map((offer: any) => ({
+      offerId: offer.id,
+      buyer: offer.seller,
+      amount: offer.amount,
+      price: offer.price,
+    }));
+  }
+
+  /**
    * Submits a signed XDR transaction to the Stellar network.
    */
   async submitTransaction(signedXdr: string): Promise<any> {

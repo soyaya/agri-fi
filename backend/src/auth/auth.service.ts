@@ -94,22 +94,9 @@ export class AuthService {
     const isAutoApprove =
       this.configService.get<string>('KYC_AUTO_APPROVE') === 'true';
 
-    let automatedApproval = isAutoApprove;
-
-    // Automated Corporate Verification
-    if (dto.isCorporate && dto.registrationNumber && dto.companyName) {
-      console.log(`Triggering automated business verification for ${dto.companyName}...`);
-      const isVerified = await this.verifyCorporateBusiness(
-        dto.companyName,
-        dto.registrationNumber,
-      );
-      if (isVerified) {
-        console.log('Business verification SUCCESS.');
-        automatedApproval = true;
-      } else {
-        console.warn('Business verification FAILED or returned inconclusive results.');
-      }
-    }
+    // Dev-only flag: allow auto-approving non-corporate submissions when explicitly enabled.
+    // Corporate verification is always manual review.
+    const automatedApproval = dto.isCorporate ? false : isAutoApprove;
 
     const submission = this.kycRepo.create({
       userId,
@@ -125,8 +112,8 @@ export class AuthService {
 
     await this.kycRepo.save(submission);
 
+    // Persist corporate metadata for review, but don't mark verified until admin approval.
     if (dto.isCorporate) {
-      user.isCompany = true;
       user.companyDetails = {
         companyName: dto.companyName,
         registrationNumber: dto.registrationNumber,
@@ -146,21 +133,42 @@ export class AuthService {
     return { kycStatus: user.kycStatus };
   }
 
-  /**
-   * Mock automated corporate verification.
-   * In production, this would call an external API like Middesk, GDC, or a business registry.
-   */
-  private async verifyCorporateBusiness(
-    companyName: string,
-    regNumber: string,
-  ): Promise<boolean> {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+  async approveCorporateKycSubmission(
+    submissionId: string,
+  ): Promise<{ kycStatus: string }> {
+    const submission = await this.kycRepo.findOne({
+      where: { id: submissionId },
+    });
+    if (!submission) {
+      throw new NotFoundException('KYC submission not found.');
+    }
 
-    // Logic: Approved if regNumber starts with 'REG' or '123'
-    // This is a placeholder for actual registry logic
-    const isValid = regNumber.startsWith('REG') || regNumber.startsWith('123');
-    return isValid;
+    if (!submission.isCorporate) {
+      throw new ConflictException({
+        code: 'NOT_CORPORATE_SUBMISSION',
+        message: 'This KYC submission is not a corporate submission.',
+      });
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { id: submission.userId },
+    });
+    if (!user) throw new NotFoundException('User not found.');
+
+    submission.status = 'approved';
+    await this.kycRepo.save(submission);
+
+    user.isCompany = true;
+    user.companyDetails = {
+      companyName: submission.companyName ?? undefined,
+      registrationNumber: submission.registrationNumber ?? undefined,
+      articlesOfIncorporationUrl:
+        submission.articlesOfIncorporationUrl ?? undefined,
+    };
+    user.kycStatus = 'verified';
+    await this.userRepo.save(user);
+
+    return { kycStatus: user.kycStatus };
   }
 
   async approveKyc(userId: string): Promise<{ kycStatus: string }> {
