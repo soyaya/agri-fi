@@ -30,6 +30,12 @@ export class ShipmentMilestone {
   @Column({ name: 'memo_text', nullable: true })
   memoText: string | null;
 
+  @Column({ type: 'double precision', nullable: true })
+  latitude: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude: number | null;
+
   @CreateDateColumn({ name: 'recorded_at' })
   recordedAt: Date;
 }

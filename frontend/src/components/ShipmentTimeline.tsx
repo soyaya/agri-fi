@@ -43,7 +43,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem('authToken');
+      const token = localStorage.getItem('auth_token');
       if (!token) {
         throw new Error('Authentication required');
       }

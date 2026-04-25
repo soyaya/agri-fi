@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
+import { getStoredToken } from '../lib/api';
 
 interface InvestmentFormProps {
   dealId: string;
@@ -52,7 +53,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     setSuccess(null);
 
     try {
-      const token = localStorage.getItem('authToken');
+      const token = getStoredToken();
       if (!token) {
         throw new Error('Please log in first');
       }

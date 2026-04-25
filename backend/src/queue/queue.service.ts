@@ -29,7 +29,7 @@ export interface DealPublishPayload extends BasePayload {
   dealId: string;
   tokenSymbol: string;
   escrowPublicKey: string;
-  escrowSecretKey: string;
+  encryptedEscrowSecret: string;
   tokenCount: number;
 }
 
@@ -53,7 +53,7 @@ export class QueueService {
     this.logger.setContext(QueueService.name);
   }
 
-  private async emit(pattern: string, data: unknown): Promise<void> {
+  public async emit(pattern: string, data: unknown): Promise<void> {
     try {
       this.client.emit(pattern, data);
       this.logger.info({ event: pattern }, `Emitted event: ${pattern}`);
@@ -66,12 +66,12 @@ export class QueueService {
     }
   }
 
-  private addCorrelationId<T extends BasePayload>(payload: T): T {
+  private addCorrelationId<T>(payload: T): T & BasePayload {
     return {
       ...payload,
       correlationId:
-        payload.correlationId || this.logger.logger.bindings()?.correlationId,
-    };
+        (payload as any).correlationId || this.logger.logger.bindings()?.correlationId,
+    } as T & BasePayload;
   }
 
   /**

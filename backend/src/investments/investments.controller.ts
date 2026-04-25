@@ -8,6 +8,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,19 +17,25 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { InvestmentsService } from './investments.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
 import { Roles, RolesGuard } from '../auth/roles.guard';
+import { StellarService } from '../stellar/stellar.service';
+import { PaginatedResult } from '../common/pagination';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
 @Controller('investments')
 export class InvestmentsController {
-  constructor(private readonly investmentsService: InvestmentsService) {}
+  constructor(
+    private readonly investmentsService: InvestmentsService,
+    private readonly stellarService: StellarService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create an investment (investor only)' })
@@ -120,18 +127,186 @@ export class InvestmentsController {
   @Get('trade-deal/:tradeDealId')
   @ApiOperation({ summary: 'List all investments for a trade deal' })
   @ApiParam({ name: 'tradeDealId', description: 'Trade deal UUID' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  async getInvestmentsByTradeDeal(@Param('tradeDealId') tradeDealId: string) {
-    return this.investmentsService.getInvestmentsByTradeDeal(tradeDealId);
+  async getInvestmentsByTradeDeal(
+    @Param('tradeDealId') tradeDealId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PaginatedResult<any>> {
+    return this.investmentsService.getInvestmentsByTradeDeal(tradeDealId, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get('my-investments')
   @ApiOperation({ summary: "List the authenticated investor's investments" })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getMyInvestments(@Request() req: { user: { id: string } }) {
-    return this.investmentsService.getInvestmentsByInvestor(req.user.id);
+  async getMyInvestments(
+    @Request() req: { user: { id: string } },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PaginatedResult<any>> {
+    return this.investmentsService.getInvestmentsByInvestor(req.user.id, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  /**
+   * Issue #92 — Bulk Investments via Stellar Batching
+   * Accepts multiple deal investments and returns a single unsigned XDR
+   * that bundles all USDC payment operations into one transaction.
+   */
+  @Post('bulk-transaction')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Build a bulk investment transaction (institutional investors, max 100 deals)',
+  })
+  @ApiBody({
+    schema: {
+      properties: {
+        investorWalletAddress: { type: 'string' },
+        investments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              escrowPublicKey: { type: 'string' },
+              amountUSD: { type: 'number' },
+              assetCode: { type: 'string' },
+              tokenAmount: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Unsigned XDR for the bulk transaction',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async buildBulkTransaction(
+    @Body('investorWalletAddress') investorWalletAddress: string,
+    @Body('investments')
+    investments: Array<{
+      escrowPublicKey: string;
+      amountUSD: number;
+      assetCode: string;
+      tokenAmount: number;
+    }>,
+  ) {
+    const unsignedXdr =
+      await this.stellarService.createBulkInvestmentTransaction(
+        investorWalletAddress,
+        investments,
+      );
+    return { unsignedXdr };
+  }
+
+  /**
+   * Issue #88 — Secondary Market: Build a Sell Offer transaction for a trade token.
+   * Returns an unsigned XDR the investor signs with their wallet (Freighter/Albedo).
+   */
+  @Post('sell-offer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Build a DEX sell offer transaction for trade tokens (secondary market)',
+  })
+  @ApiBody({
+    schema: {
+      properties: {
+        sellerWalletAddress: { type: 'string' },
+        tradeTokenCode: { type: 'string' },
+        tradeTokenIssuer: { type: 'string' },
+        tokenAmount: { type: 'number' },
+        pricePerToken: { type: 'string', example: '1.05' },
+        offerId: {
+          type: 'number',
+          description: '0 to create a new offer; non-zero to update/cancel',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Unsigned XDR for the sell offer transaction',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async buildSellOffer(
+    @Body('sellerWalletAddress') sellerWalletAddress: string,
+    @Body('tradeTokenCode') tradeTokenCode: string,
+    @Body('tradeTokenIssuer') tradeTokenIssuer: string,
+    @Body('tokenAmount') tokenAmount: number,
+    @Body('pricePerToken') pricePerToken: string,
+    @Body('offerId') offerId?: number,
+  ) {
+    const unsignedXdr = await this.stellarService.createSellOfferTransaction(
+      sellerWalletAddress,
+      tradeTokenCode,
+      tradeTokenIssuer,
+      tokenAmount,
+      pricePerToken,
+      offerId ?? 0,
+    );
+    return { unsignedXdr };
+  }
+
+  /**
+   * Issue #88 — Secondary Market: Fetch active sell offers for a trade token
+   * so the deal details page can show the DEX order book.
+   */
+  @Get('offers/:tokenCode/:tokenIssuer')
+  @ApiOperation({
+    summary: 'Get active DEX sell offers for a trade token (order book)',
+  })
+  @ApiParam({ name: 'tokenCode', description: 'Trade token asset code' })
+  @ApiParam({
+    name: 'tokenIssuer',
+    description: 'Trade token issuer public key',
+  })
+  @ApiResponse({ status: 200, description: 'List of active sell offers' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getActiveOffers(
+    @Param('tokenCode') tokenCode: string,
+    @Param('tokenIssuer') tokenIssuer: string,
+  ) {
+    return this.stellarService.getActiveOffersForToken(tokenCode, tokenIssuer);
+  }
+
+  /**
+   * Issue #112 — Secondary Market: Fetch active buy orders (bids) for a trade token.
+   */
+  @Get('buy-orders/:tokenCode/:tokenIssuer')
+  @ApiOperation({
+    summary: 'Get active DEX buy offers for a trade token (buy order book)',
+  })
+  @ApiParam({ name: 'tokenCode', description: 'Trade token asset code' })
+  @ApiParam({
+    name: 'tokenIssuer',
+    description: 'Trade token issuer public key',
+  })
+  @ApiResponse({ status: 200, description: 'List of active buy offers' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getActiveBuyOrders(
+    @Param('tokenCode') tokenCode: string,
+    @Param('tokenIssuer') tokenIssuer: string,
+  ) {
+    return this.stellarService.getActiveBuyOrdersForToken(tokenCode, tokenIssuer);
   }
 }

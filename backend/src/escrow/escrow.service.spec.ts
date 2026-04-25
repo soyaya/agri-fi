@@ -9,6 +9,7 @@ import { Investment } from '../users/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { PinoLogger } from 'nestjs-pino';
 
 describe('EscrowService', () => {
   let service: EscrowService;
@@ -61,6 +62,15 @@ describe('EscrowService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EscrowService,
+        {
+          provide: PinoLogger,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
         {
           provide: getRepositoryToken(PaymentDistribution),
           useValue: mockPaymentDistributionRepo,

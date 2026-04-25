@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsUUID, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsUUID, IsIn, IsOptional, IsString, IsNumber } from 'class-validator';
 import { MilestoneType } from '../entities/shipment-milestone.entity';
 
 export class CreateMilestoneDto {
@@ -25,4 +25,14 @@ export class CreateMilestoneDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 5.6037, description: 'Optional latitude' })
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: -0.187, description: 'Optional longitude' })
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
 }

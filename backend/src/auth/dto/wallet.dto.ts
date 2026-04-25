@@ -1,12 +1,38 @@
+import { IsString, registerDecorator, ValidationOptions } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty } from 'class-validator';
+import { Keypair } from 'stellar-sdk';
+
+export function IsStellarPublicKey(validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isStellarPublicKey',
+      target: object.constructor,
+      propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any) {
+          if (typeof value !== 'string') return false;
+          try {
+            Keypair.fromPublicKey(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        defaultMessage() {
+          return 'walletAddress must be a valid Stellar public key (56-character G... address)';
+        },
+      },
+    });
+  };
+}
 
 export class WalletDto {
   @ApiProperty({
-    example: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37',
-    description: 'Stellar public key (G... address)',
+    description: 'Stellar public key (56-character base32 address starting with G)',
+    example: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
   })
   @IsString()
-  @IsNotEmpty()
+  @IsStellarPublicKey()
   walletAddress: string;
 }

@@ -71,6 +71,9 @@ export class TradeDeal {
   @Column({ name: 'issuer_public_key', nullable: true })
   issuerPublicKey: string | null;
 
+  @Column({ name: 'issuer_secret_key', nullable: true })
+  issuerSecretKey: string | null;
+
   @Column({
     name: 'total_invested',
     type: 'numeric',

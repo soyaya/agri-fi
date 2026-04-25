@@ -14,6 +14,11 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
+import {
+  normalizePagination,
+  PaginatedResult,
+  toPaginatedResult,
+} from '../common/pagination';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -106,6 +111,7 @@ export class TradeDealsService {
       escrowPublicKey: null,
       escrowSecretKey: null,
       issuerPublicKey: null,
+      issuerSecretKey: null,
       stellarAssetTxId: null,
     });
 
@@ -176,7 +182,10 @@ export class TradeDealsService {
     };
   }
 
-  async findOne(id: string): Promise<any> {
+  async findOne(
+    id: string,
+    access?: { canViewSensitive?: boolean },
+  ): Promise<any> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id },
       relations: ['farmer', 'trader', 'documents', 'investments'],
@@ -199,32 +208,43 @@ export class TradeDealsService {
     );
     const tokensRemaining = Number(deal.tokenCount) - tokensSold;
 
-    return {
+    const canViewSensitive = !!access?.canViewSensitive;
+    const publicDetail = {
       id: deal.id,
       commodity: deal.commodity,
       quantity: deal.quantity,
-      unit: deal.quantityUnit,
-      totalValue: deal.totalValue,
-      deliveryDate: deal.deliveryDate,
+      quantity_unit: deal.quantityUnit,
+      total_value: deal.totalValue,
+      delivery_date: deal.deliveryDate,
       status: deal.status,
-      tokenCount: deal.tokenCount,
-      tokenSymbol: deal.tokenSymbol,
-      totalInvested: deal.totalInvested,
-      farmerId: deal.farmerId,
-      traderId: deal.traderId,
-      tokensRemaining,
-      traderName: deal.trader?.email || 'Unknown Trader',
+      token_count: deal.tokenCount,
+      token_symbol: deal.tokenSymbol,
+      total_invested: deal.totalInvested,
+      tokens_remaining: tokensRemaining,
+      trader_name: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
         deal.deliveryDate,
       ).toLocaleDateString()}`,
+    };
+
+    if (!canViewSensitive) {
+      return publicDetail;
+    }
+
+    return {
+      ...publicDetail,
+      farmer_id: deal.farmerId,
+      trader_id: deal.traderId,
+      escrow_public_key: deal.escrowPublicKey,
+      issuer_public_key: deal.issuerPublicKey,
       documents: deal.documents ?? [],
       milestones: milestones.map((milestone) => ({
         id: milestone.id,
         milestone: milestone.milestone,
         notes: milestone.notes,
-        stellarTxId: milestone.stellarTxId,
-        recordedBy: milestone.recordedBy,
-        recordedAt: milestone.recordedAt,
+        stellar_tx_id: milestone.stellarTxId,
+        recorded_by: milestone.recordedBy,
+        recorded_at: milestone.recordedAt,
       })),
     };
   }
@@ -275,7 +295,7 @@ export class TradeDealsService {
         { dealId, tokenSymbol: deal.tokenSymbol },
         'Issuing trade token for deal',
       );
-      const { txId: stellarAssetTxId, issuerPublicKey } =
+      const { txId: stellarAssetTxId, issuerPublicKey, issuerSecret } =
         await this.stellarService.issueTradeToken(
           deal.tokenSymbol,
           escrowPublicKey,
@@ -283,12 +303,17 @@ export class TradeDealsService {
           deal.tokenCount,
         );
 
+      // Encrypt the issuer secret
+      const encryptedIssuerSecret =
+        this.stellarService.encryptSecret(issuerSecret);
+
       // Update deal with Stellar data
       await this.tradeDealRepo.update(dealId, {
         status: 'open',
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
         issuerPublicKey,
+        issuerSecretKey: encryptedIssuerSecret,
         stellarAssetTxId,
       });
 
@@ -304,6 +329,7 @@ export class TradeDealsService {
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
         issuerPublicKey,
+        issuerSecretKey: encryptedIssuerSecret,
         stellarAssetTxId,
       };
     } catch (error) {
@@ -357,6 +383,76 @@ export class TradeDealsService {
     });
 
     return this.documentRepo.save(doc);
+  }
+
+  async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (deal.traderId !== traderId) {
+      throw new ForbiddenException({
+        code: 'NOT_ASSIGNED_TRADER',
+        message: 'Only the assigned trader can cancel this deal.',
+      });
+    }
+
+    if (deal.status === 'canceled' as TradeDealStatus) {
+      return deal; // already canceled
+    }
+
+    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
+      // Find all confirmed investments to gather token amounts
+      const confirmedInvestments =
+        deal.investments?.filter((inv) => inv.status === 'confirmed') || [];
+
+      // Create shares array representing wallets holding the tokens
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        confirmedInvestments.map((inv) => ({
+          walletAddress: inv.investorWallet,
+          tokenAmount: Number(inv.tokenAmount),
+        }));
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+
+      // Include escrow account if it holds unsold tokens
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+
+        this.logger.info(
+          { dealId, tokenCount: deal.tokenCount, holders: investorShares.length },
+          'Initiating clawback for canceled deal',
+        );
+
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
+    deal.status = 'canceled' as TradeDealStatus;
+    return this.tradeDealRepo.save(deal);
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {

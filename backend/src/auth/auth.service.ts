@@ -67,6 +67,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion ?? 0,
     });
     return { accessToken: token };
   }
@@ -93,22 +94,9 @@ export class AuthService {
     const isAutoApprove =
       this.configService.get<string>('KYC_AUTO_APPROVE') === 'true';
 
-    let automatedApproval = isAutoApprove;
-
-    // Automated Corporate Verification
-    if (dto.isCorporate && dto.registrationNumber && dto.companyName) {
-      console.log(`Triggering automated business verification for ${dto.companyName}...`);
-      const isVerified = await this.verifyCorporateBusiness(
-        dto.companyName,
-        dto.registrationNumber,
-      );
-      if (isVerified) {
-        console.log('Business verification SUCCESS.');
-        automatedApproval = true;
-      } else {
-        console.warn('Business verification FAILED or returned inconclusive results.');
-      }
-    }
+    // Dev-only flag: allow auto-approving non-corporate submissions when explicitly enabled.
+    // Corporate verification is always manual review.
+    const automatedApproval = dto.isCorporate ? false : isAutoApprove;
 
     const submission = this.kycRepo.create({
       userId,
@@ -118,10 +106,21 @@ export class AuthService {
       companyName: dto.companyName,
       registrationNumber: dto.registrationNumber,
       businessLicenseUrl: dto.businessLicenseUrl,
+      articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
       status: automatedApproval ? 'approved' : 'pending_review',
     });
 
     await this.kycRepo.save(submission);
+
+    // Persist corporate metadata for review, but don't mark verified until admin approval.
+    if (dto.isCorporate) {
+      user.companyDetails = {
+        companyName: dto.companyName,
+        registrationNumber: dto.registrationNumber,
+        articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
+      };
+      await this.userRepo.save(user);
+    }
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
@@ -134,21 +133,42 @@ export class AuthService {
     return { kycStatus: user.kycStatus };
   }
 
-  /**
-   * Mock automated corporate verification.
-   * In production, this would call an external API like Middesk, GDC, or a business registry.
-   */
-  private async verifyCorporateBusiness(
-    companyName: string,
-    regNumber: string,
-  ): Promise<boolean> {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+  async approveCorporateKycSubmission(
+    submissionId: string,
+  ): Promise<{ kycStatus: string }> {
+    const submission = await this.kycRepo.findOne({
+      where: { id: submissionId },
+    });
+    if (!submission) {
+      throw new NotFoundException('KYC submission not found.');
+    }
 
-    // Logic: Approved if regNumber starts with 'REG' or '123'
-    // This is a placeholder for actual registry logic
-    const isValid = regNumber.startsWith('REG') || regNumber.startsWith('123');
-    return isValid;
+    if (!submission.isCorporate) {
+      throw new ConflictException({
+        code: 'NOT_CORPORATE_SUBMISSION',
+        message: 'This KYC submission is not a corporate submission.',
+      });
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { id: submission.userId },
+    });
+    if (!user) throw new NotFoundException('User not found.');
+
+    submission.status = 'approved';
+    await this.kycRepo.save(submission);
+
+    user.isCompany = true;
+    user.companyDetails = {
+      companyName: submission.companyName ?? undefined,
+      registrationNumber: submission.registrationNumber ?? undefined,
+      articlesOfIncorporationUrl:
+        submission.articlesOfIncorporationUrl ?? undefined,
+    };
+    user.kycStatus = 'verified';
+    await this.userRepo.save(user);
+
+    return { kycStatus: user.kycStatus };
   }
 
   async approveKyc(userId: string): Promise<{ kycStatus: string }> {
@@ -167,6 +187,16 @@ export class AuthService {
     submission.status = 'approved';
     await this.kycRepo.save(submission);
 
+    if (submission.isCorporate) {
+      user.isCompany = true;
+      user.companyDetails = {
+        companyName: submission.companyName ?? undefined,
+        registrationNumber: submission.registrationNumber ?? undefined,
+        articlesOfIncorporationUrl:
+          submission.articlesOfIncorporationUrl ?? undefined,
+      };
+    }
+
     user.kycStatus = 'verified';
     await this.userRepo.save(user);
 
@@ -174,5 +204,18 @@ export class AuthService {
     console.log(`KYC manually verified for user ${user.email} — notification queued.`);
 
     return { kycStatus: user.kycStatus };
+  }
+
+  async updateUserRole(
+    userId: string,
+    role: User['role'],
+  ): Promise<{ id: string; role: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    user.role = role;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    const saved = await this.userRepo.save(user);
+    return { id: saved.id, role: saved.role };
   }
 }
