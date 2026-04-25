@@ -135,8 +135,15 @@ export const apiClient = {
 
 // ── Public marketplace helpers ────────────────────────────────────────────────
 
-export async function getOpenDeals(): Promise<Deal[]> {
-  const res = await fetch(`${API_BASE}/trade-deals`, { cache: 'no-store' });
+export interface PaginatedDeals {
+  data: Deal[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
+  const res = await fetch(`${API_BASE}/trade-deals?page=${page}&limit=${limit}`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to fetch deals');
   return res.json();
 }

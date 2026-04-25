@@ -7,7 +7,7 @@ import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 const mockDeal = { id: 'deal-uuid', commodity: 'Cocoa', status: 'open' };
 
 const mockService = {
-  findOpen: jest.fn().mockResolvedValue([mockDeal]),
+  findOpen: jest.fn().mockResolvedValue({ data: [mockDeal], total: 1, page: 1, limit: 12 }),
   findOne: jest.fn().mockResolvedValue(mockDeal),
 };
 
@@ -35,7 +35,7 @@ describe('TradeDealsController (public access)', () => {
   describe('GET /trade-deals', () => {
     it('returns deals without authentication', async () => {
       const result = await controller.findOpen();
-      expect(result).toEqual([mockDeal]);
+      expect(result).toEqual({ data: [mockDeal], total: 1, page: 1, limit: 12 });
     });
   });
 

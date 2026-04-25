@@ -123,9 +123,9 @@ export class TradeDealsService {
     commodity?: string;
     page?: number;
     limit?: number;
-  }): Promise<any[]> {
+  }): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
 
     const qb = this.tradeDealRepo
@@ -153,22 +153,27 @@ export class TradeDealsService {
       });
     }
 
-    const deals = await qb.getMany();
+    const [deals, total] = await qb.getManyAndCount();
 
-    return deals.map((deal) => ({
-      id: deal.id,
-      commodity: deal.commodity,
-      quantity: deal.quantity,
-      quantity_unit: deal.quantityUnit,
-      total_value: deal.totalValue,
-      total_invested: deal.totalInvested,
-      token_count: deal.tokenCount,
-      token_symbol: deal.tokenSymbol,
-      delivery_date: deal.deliveryDate,
-      farmer_id: deal.farmerId,
-      trader_id: deal.traderId,
-      remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
-    }));
+    return {
+      data: deals.map((deal) => ({
+        id: deal.id,
+        commodity: deal.commodity,
+        quantity: deal.quantity,
+        quantity_unit: deal.quantityUnit,
+        total_value: deal.totalValue,
+        total_invested: deal.totalInvested,
+        token_count: deal.tokenCount,
+        token_symbol: deal.tokenSymbol,
+        delivery_date: deal.deliveryDate,
+        farmer_id: deal.farmerId,
+        trader_id: deal.traderId,
+        remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(id: string): Promise<any> {
