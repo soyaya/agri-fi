@@ -106,6 +106,7 @@ export class TradeDealsService {
       escrowPublicKey: null,
       escrowSecretKey: null,
       issuerPublicKey: null,
+      issuerSecretKey: null,
       stellarAssetTxId: null,
     });
 
@@ -270,7 +271,7 @@ export class TradeDealsService {
         { dealId, tokenSymbol: deal.tokenSymbol },
         'Issuing trade token for deal',
       );
-      const { txId: stellarAssetTxId, issuerPublicKey } =
+      const { txId: stellarAssetTxId, issuerPublicKey, issuerSecret } =
         await this.stellarService.issueTradeToken(
           deal.tokenSymbol,
           escrowPublicKey,
@@ -278,12 +279,17 @@ export class TradeDealsService {
           deal.tokenCount,
         );
 
+      // Encrypt the issuer secret
+      const encryptedIssuerSecret =
+        this.stellarService.encryptSecret(issuerSecret);
+
       // Update deal with Stellar data
       await this.tradeDealRepo.update(dealId, {
         status: 'open',
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
         issuerPublicKey,
+        issuerSecretKey: encryptedIssuerSecret,
         stellarAssetTxId,
       });
 
@@ -299,6 +305,7 @@ export class TradeDealsService {
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
         issuerPublicKey,
+        issuerSecretKey: encryptedIssuerSecret,
         stellarAssetTxId,
       };
     } catch (error) {
@@ -352,6 +359,76 @@ export class TradeDealsService {
     });
 
     return this.documentRepo.save(doc);
+  }
+
+  async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (deal.traderId !== traderId) {
+      throw new ForbiddenException({
+        code: 'NOT_ASSIGNED_TRADER',
+        message: 'Only the assigned trader can cancel this deal.',
+      });
+    }
+
+    if (deal.status === 'canceled' as TradeDealStatus) {
+      return deal; // already canceled
+    }
+
+    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
+      // Find all confirmed investments to gather token amounts
+      const confirmedInvestments =
+        deal.investments?.filter((inv) => inv.status === 'confirmed') || [];
+
+      // Create shares array representing wallets holding the tokens
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        confirmedInvestments.map((inv) => ({
+          walletAddress: inv.investorWallet,
+          tokenAmount: Number(inv.tokenAmount),
+        }));
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+
+      // Include escrow account if it holds unsold tokens
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+
+        this.logger.info(
+          { dealId, tokenCount: deal.tokenCount, holders: investorShares.length },
+          'Initiating clawback for canceled deal',
+        );
+
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
+    deal.status = 'canceled' as TradeDealStatus;
+    return this.tradeDealRepo.save(deal);
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {

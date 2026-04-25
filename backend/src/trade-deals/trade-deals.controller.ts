@@ -105,4 +105,28 @@ export class TradeDealsController {
   async findOne(@Param('id') id: string): Promise<any> {
     return this.tradeDealsService.findOne(id);
   }
+
+  @Post(':id/cancel')
+  @UseGuards(AuthGuard('jwt'), KycGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Cancel a trade deal and trigger clawbacks (trader only, KYC required)',
+  })
+  @ApiResponse({ status: 200, description: 'Trade deal canceled successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Role or KYC requirement not met' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async cancelDeal(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+  ): Promise<TradeDeal> {
+    if (req.user.role !== 'trader') {
+      throw new ForbiddenException({
+        code: 'ROLE_REQUIRED',
+        message: 'Only traders can cancel trade deals.',
+      });
+    }
+
+    return this.tradeDealsService.cancelDeal(id, req.user.id);
+  }
 }

@@ -164,10 +164,16 @@ export class StellarService {
           startingBalance: '1.5',
         }),
       )
+      .addOperation(
+        Operation.setOptions({
+          source: issuerKeypair.publicKey(),
+          setFlags: 10, // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+        }),
+      )
       .setTimeout(30)
       .build();
 
-    fundIssuerTx.sign(this.platformKeypair);
+    fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
     await this.server.submitTransaction(fundIssuerTx);
 
     const tradeAsset = new Asset(assetCode, issuerKeypair.publicKey());
@@ -724,6 +730,51 @@ export class StellarService {
         return 'pending';
       }
       throw err;
+    }
+  }
+
+  /**
+   * Clawbacks tokens from all current holders back to the issuer.
+   */
+  async clawbackTokens(
+    assetCode: string,
+    issuerPublicKey: string,
+    issuerSecret: string,
+    holders: { walletAddress: string; tokenAmount: number }[],
+  ): Promise<void> {
+    const issuerKeypair = Keypair.fromSecret(issuerSecret);
+    const issuerAccount = await this.server.loadAccount(issuerPublicKey);
+    const tradeAsset = new Asset(assetCode, issuerPublicKey);
+
+    const txBuilder = new TransactionBuilder(issuerAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    });
+
+    for (const holder of holders) {
+      if (holder.tokenAmount > 0) {
+        txBuilder.addOperation(
+          Operation.clawback({
+            asset: tradeAsset,
+            from: holder.walletAddress,
+            amount: holder.tokenAmount.toFixed(7),
+          }),
+        );
+      }
+    }
+
+    const tx = txBuilder.setTimeout(300).build();
+    tx.sign(issuerKeypair);
+
+    try {
+      await this.server.submitTransaction(tx);
+      this.logger.info(
+        { assetCode, issuerPublicKey, holdersCount: holders.length },
+        'Tokens clawed back successfully',
+      );
+    } catch (err: any) {
+      this.logger.error(`Clawback failed: ${err.message}`, err.stack);
+      throw new Error(`Clawback failed: ${err.message}`);
     }
   }
 }
