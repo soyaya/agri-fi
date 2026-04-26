@@ -174,6 +174,24 @@ export const apiClient = {
     return raw ? (JSON.parse(raw) as User) : null;
   },
 
+  // GET /users/me — fetch the up-to-date profile from the server and refresh
+  // the cached copy in localStorage so KYC, wallet, and role changes made by
+  // an admin are picked up without forcing a logout.
+  async refreshCurrentUser(): Promise<User | null> {
+    if (typeof window === "undefined") return null;
+    if (!getStoredToken()) return null;
+    try {
+      const fresh = await apiFetch<User>("/users/me");
+      localStorage.setItem("auth_user", JSON.stringify(fresh));
+      return fresh;
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        this.clearAuth();
+      }
+      throw err;
+    }
+  },
+
   // GET /users/me/deals
   async getFarmerDeals(): Promise<Deal[]> {
     return apiFetch<Deal[]>("/users/me/deals");

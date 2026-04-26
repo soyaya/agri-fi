@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { Document } from '../trade-deals/entities/document.entity';
+import { User } from '../auth/entities/user.entity';
 
 const mockDeal = (id: string, overrides = {}): TradeDeal =>
   ({
@@ -24,13 +25,16 @@ const mockDeal = (id: string, overrides = {}): TradeDeal =>
 describe('UsersService', () => {
   let service: UsersService;
 
+  const userRepo = { findOne: jest.fn() };
   const tradeDealRepo = { find: jest.fn() };
   const investmentRepo = { find: jest.fn() };
   const milestoneRepo = { findOne: jest.fn() };
   const documentRepo = { createQueryBuilder: jest.fn() };
 
   // Helper to mock the GROUP BY query chain
-  const mockDocumentCounts = (rows: { trade_deal_id: string; count: string }[]) => {
+  const mockDocumentCounts = (
+    rows: { trade_deal_id: string; count: string }[],
+  ) => {
     const qb = {
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
@@ -49,9 +53,13 @@ describe('UsersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
+        { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepo },
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
-        { provide: getRepositoryToken(ShipmentMilestone), useValue: milestoneRepo },
+        {
+          provide: getRepositoryToken(ShipmentMilestone),
+          useValue: milestoneRepo,
+        },
         { provide: getRepositoryToken(Document), useValue: documentRepo },
       ],
     }).compile();
@@ -131,8 +139,49 @@ describe('UsersService', () => {
     });
 
     it('throws ForbiddenException for investor role', async () => {
-      await expect(service.getUserDeals('investor-1', 'investor')).rejects.toThrow(
-        ForbiddenException,
+      await expect(
+        service.getUserDeals('investor-1', 'investor'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('getProfile', () => {
+    it('returns the current user profile', async () => {
+      userRepo.findOne.mockResolvedValue({
+        id: 'user-1',
+        email: 'a@b.com',
+        role: 'farmer',
+        kycStatus: 'verified',
+        walletAddress: 'GABC',
+        isCompany: false,
+        companyDetails: null,
+        country: 'NG',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      });
+
+      const result = await service.getProfile('user-1');
+
+      expect(userRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+      });
+      expect(result).toEqual({
+        id: 'user-1',
+        email: 'a@b.com',
+        role: 'farmer',
+        kycStatus: 'verified',
+        walletAddress: 'GABC',
+        isCompany: false,
+        companyDetails: null,
+        country: 'NG',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      });
+    });
+
+    it('throws NotFoundException when the user no longer exists', async () => {
+      userRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.getProfile('missing')).rejects.toThrow(
+        NotFoundException,
       );
     });
   });

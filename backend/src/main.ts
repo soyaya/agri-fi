@@ -13,8 +13,11 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       exceptionFactory: (errors) => {
-        const walletError = errors.find((e) => e.property === 'walletAddress' &&
-          e.constraints?.['isStellarPublicKey']);
+        const walletError = errors.find(
+          (e) =>
+            e.property === 'walletAddress' &&
+            e.constraints?.['isStellarPublicKey'],
+        );
         if (walletError) {
           throw new BadRequestException({
             code: 'INVALID_WALLET_ADDRESS',
@@ -33,13 +36,18 @@ async function bootstrap() {
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup(
+    'api/docs',
+    app,
+    SwaggerModule.createDocument(app, config),
+  );
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
   console.log(`Agric-onchain backend running on port ${port}`);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function setupSwagger(app: any) {
   const isProd = process.env.NODE_ENV === 'production';
 

@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { getOpenDeals } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
 
+// Render on demand so CI build does not need a reachable backend.
+export const dynamic = 'force-dynamic';
 export const revalidate = 60;
 
 export default async function MarketplacePage() {

@@ -49,7 +49,9 @@ export class StellarService {
 
     const platformSecret = config.get<string>('STELLAR_PLATFORM_SECRET', '');
     if (!platformSecret && process.env.NODE_ENV !== 'test') {
-      throw new Error('STELLAR_PLATFORM_SECRET is required in production and development environments');
+      throw new Error(
+        'STELLAR_PLATFORM_SECRET is required in production and development environments',
+      );
     }
     this.platformKeypair = platformSecret
       ? Keypair.fromSecret(platformSecret)
@@ -175,7 +177,8 @@ export class StellarService {
       .addOperation(
         Operation.setOptions({
           source: issuerKeypair.publicKey(),
-          setFlags: 10, // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          setFlags: 10 as any,
         }),
       )
       .setTimeout(30)
@@ -569,34 +572,38 @@ export class StellarService {
     const investorAccount = await this.server.loadAccount(investorWallet);
     const tradeAsset = new Asset(assetCode, issuerPublicKey);
 
-    const needsTrustline = !(await this.hasTrustline(investorAccount, tradeAsset));
+    const needsTrustline = !(await this.hasTrustline(
+      investorAccount,
+      tradeAsset,
+    ));
 
     if (needsTrustline) {
       // Each trustline requires 0.5 XLM base reserve; ensure the investor can cover it
       const xlmBalance = parseFloat(
-        (investorAccount.balances.find((b: any) => b.asset_type === 'native') as any)?.balance ?? '0',
+        (
+          investorAccount.balances.find(
+            (b: any) => b.asset_type === 'native',
+          ) as any
+        )?.balance ?? '0',
       );
       // Minimum spendable = existing subentries * 0.5 + 2 (base) + 0.5 (new trustline) + fee buffer
-      const minRequired = (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
+      const minRequired =
+        (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
       if (xlmBalance < minRequired) {
         throw new Error(
           `Insufficient XLM balance for trustline base reserve. ` +
-          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+            `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
         );
       }
     }
 
-    const txBuilder = new TransactionBuilder(investorAccount, {
-    // Use USDC for stable USD-denominated payments
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
     });
 
     if (needsTrustline) {
-      txBuilder.addOperation(
-        Operation.changeTrust({ asset: tradeAsset }),
-      );
+      txBuilder.addOperation(Operation.changeTrust({ asset: tradeAsset }));
     }
 
     txBuilder
@@ -609,11 +616,8 @@ export class StellarService {
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
       .setTimeout(300);
-      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`));
 
     this.addComplianceDataOperations(txBuilder, complianceData);
-
-    const tx = txBuilder.setTimeout(300).build();
 
     return txBuilder.build().toXDR();
   }

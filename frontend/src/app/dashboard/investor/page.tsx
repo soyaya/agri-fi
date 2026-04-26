@@ -22,21 +22,37 @@ export default function InvestorDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check authentication and role
-    const currentUser = apiClient.getCurrentUser();
-    if (!currentUser) {
-      router.push("/login");
-      return;
-    }
+    let cancelled = false;
 
-    if (currentUser.role !== "investor") {
-      // Redirect to correct dashboard based on role
-      router.push(`/dashboard/${currentUser.role}`);
-      return;
-    }
+    (async () => {
+      const cached = apiClient.getCurrentUser();
+      if (!cached) {
+        router.push("/login");
+        return;
+      }
 
-    setUser(currentUser);
-    fetchInvestorInvestments();
+      let current: User = cached;
+      try {
+        const fresh = await apiClient.refreshCurrentUser();
+        if (fresh) current = fresh;
+      } catch {
+        // Fall back to cached profile if the refresh call fails.
+      }
+
+      if (cancelled) return;
+
+      if (current.role !== "investor") {
+        router.push(`/dashboard/${current.role}`);
+        return;
+      }
+
+      setUser(current);
+      fetchInvestorInvestments();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const fetchInvestorInvestments = async () => {

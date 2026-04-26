@@ -1,4 +1,11 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -35,8 +42,14 @@ export class StellarController {
       required: ['signedXdr'],
     },
   })
-  @ApiResponse({ status: 200, description: 'Transaction submitted successfully' })
-  @ApiResponse({ status: 400, description: 'Invalid XDR or transaction rejected' })
+  @ApiResponse({
+    status: 200,
+    description: 'Transaction submitted successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid XDR or transaction rejected',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async submitTransaction(@Body('signedXdr') signedXdr: string) {
     const result = await this.stellarService.submitTransaction(signedXdr);
