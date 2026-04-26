@@ -158,6 +158,26 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 // ── Stateful API client (used by dashboard / login pages) ────────────────────
 
 export const apiClient = {
+  /** Call POST /auth/login, store the returned JWT, and return the token. */
+  async login(email: string, password: string): Promise<string> {
+    const { accessToken } = await apiFetch<{ accessToken: string }>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+    );
+    localStorage.setItem("auth_token", accessToken);
+    return accessToken;
+  },
+
+  /** Fetch the authenticated user's profile from GET /users/me. */
+  async getMe(): Promise<User> {
+    const user = await apiFetch<User>("/users/me");
+    localStorage.setItem("auth_user", JSON.stringify(user));
+    return user;
+  },
+
   setAuth(token: string, user: User) {
     localStorage.setItem("auth_token", token);
     localStorage.setItem("auth_user", JSON.stringify(user));
